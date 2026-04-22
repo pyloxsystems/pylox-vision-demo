@@ -1,0 +1,13 @@
+services:
+  zigbee2mqtt:
+    image: koenkk/zigbee2mqtt:latest
+    container_name: pylox-zigbee
+    network_mode: host
+    volumes:
+      - ./data/zigbee2mqtt:/app/data
+      - /run/udev:/run/udev:ro
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+    environment:
+      - TZ=America/New_York
+    restart: unless-stopped

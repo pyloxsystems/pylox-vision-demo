@@ -1,0 +1,33 @@
+services:
+  frigate:
+    image: ghcr.io/blakeblackshear/frigate:stable
+    container_name: frigate
+    privileged: true
+    network_mode: host
+    shm_size: "256mb"
+    volumes:
+      - ./frigate-config.yml:/config/config.yml
+      - ./frigate-storage:/media/frigate
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+
+  zigbee2mqtt:
+    image: koenkk/zigbee2mqtt:latest
+    container_name: pylox-zigbee
+    network_mode: host
+    volumes:
+      - ./zigbee2mqtt:/app/data
+      - /run/udev:/run/udev:ro
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+    environment:
+      - TZ=America/New_York
+    restart: unless-stopped
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto
+    network_mode: host
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    restart: unless-stopped

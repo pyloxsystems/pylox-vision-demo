@@ -1,0 +1,35 @@
+{
+  "site": {
+    "id": "bobs-auto",
+    "name": "Bob's Auto Dealership",
+    "type": "car dealership",
+    "hours": {
+      "open": 7,
+      "close": 20
+    },
+    "address": "456 Commercial Blvd, Pompano Beach, FL"
+  },
+  "cameras": {
+    "cam1": {
+      "name": "Front Entrance",
+      "false_positives": [],
+      "known_people": []
+    },
+    "cam2": {
+      "name": "Parking Lot",
+      "false_positives": [],
+      "known_people": []
+    },
+    "cam3": {
+      "name": "Service Bay",
+      "false_positives": [],
+      "known_people": []
+    }
+  },
+  "learned": [],
+  "stats": {
+    "total_feedback": 0,
+    "false_positives_reported": 0,
+    "correct_alerts": 0
+  }
+}

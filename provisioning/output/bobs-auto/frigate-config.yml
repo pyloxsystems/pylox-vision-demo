@@ -1,0 +1,129 @@
+version: 0.16-0
+
+mqtt:
+  enabled: true
+  host: localhost
+  port: 1883
+
+detectors:
+  cpu:
+    type: cpu
+    num_threads: 4
+
+detect:
+  enabled: false
+
+genai:
+  enabled: false
+
+auth:
+  enabled: false
+
+go2rtc:
+  streams:
+    cam1:
+      rtsp://admin:password@192.168.1.100:554/cam/realmonitor?channel=1&subtype=1
+    cam2:
+      rtsp://admin:password@192.168.1.100:554/cam/realmonitor?channel=2&subtype=1
+    cam3:
+      rtsp://admin:password@192.168.1.100:554/cam/realmonitor?channel=3&subtype=1
+
+cameras:
+  cam1:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://admin:password@192.168.1.100:554/cam/realmonitor?channel=1&subtype=1
+          input_args: preset-rtsp-generic
+          roles:
+            - detect
+            - record
+    detect:
+      enabled: true
+      width: 640
+      height: 480
+      fps: 3
+    objects:
+      track:
+        - person
+      filters:
+        person:
+          min_score: 0.4
+          threshold: 0.5
+          min_area: 500
+    snapshots:
+      enabled: true
+      retain:
+        default: 3
+    record:
+      enabled: true
+      retain:
+        days: 7
+    zones:
+      entrance:
+        coordinates: 0.3,0.1,0.7,0.2,0.6,1,0,1,0.2,0.4
+        loitering_time: 3
+        inertia: 4
+
+  cam2:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://admin:password@192.168.1.100:554/cam/realmonitor?channel=2&subtype=1
+          input_args: preset-rtsp-generic
+          roles:
+            - detect
+            - record
+    detect:
+      enabled: true
+      width: 640
+      height: 480
+      fps: 3
+    objects:
+      track:
+        - person
+        - car
+      filters:
+        person:
+          min_score: 0.4
+          threshold: 0.5
+          min_area: 500
+    snapshots:
+      enabled: true
+      retain:
+        default: 3
+    record:
+      enabled: true
+      retain:
+        days: 7
+
+  cam3:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://admin:password@192.168.1.100:554/cam/realmonitor?channel=3&subtype=1
+          input_args: preset-rtsp-generic
+          roles:
+            - detect
+            - record
+    detect:
+      enabled: true
+      width: 704
+      height: 480
+      fps: 2
+    objects:
+      track:
+        - person
+      filters:
+        person:
+          min_score: 0.4
+          threshold: 0.5
+          min_area: 500
+    snapshots:
+      enabled: true
+      retain:
+        default: 3
+    record:
+      enabled: true
+      retain:
+        days: 7

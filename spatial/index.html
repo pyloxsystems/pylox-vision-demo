@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pylox Vision — Spatial View</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif; overflow: hidden; }
+    #canvas { width: 100vw; height: 100vh; display: block; }
+
+    /* HUD overlay */
+    #hud { position: fixed; top: 0; left: 0; right: 0; padding: 16px 24px; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; z-index: 10; }
+    #hud > * { pointer-events: auto; }
+    .hud-title { font-size: 13px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: rgba(255,255,255,0.7); }
+    .hud-stats { font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 4px; }
+
+    /* Status panel */
+    #status-panel { position: fixed; bottom: 16px; left: 16px; background: rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px 16px; z-index: 10; backdrop-filter: blur(10px); min-width: 200px; }
+    .status-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 12px; }
+    .status-label { color: rgba(255,255,255,0.5); }
+    .status-value { color: #fff; font-weight: 500; }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .dot-green { background: #22c55e; }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #eab308; }
+
+    /* Camera list */
+    #camera-panel { position: fixed; right: 16px; top: 60px; background: rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; z-index: 10; backdrop-filter: blur(10px); max-height: 60vh; overflow-y: auto; }
+    .cam-item { display: flex; align-items: center; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-bottom: 2px; }
+    .cam-item:hover { background: rgba(255,255,255,0.1); }
+    .cam-item.active { background: rgba(220,38,38,0.3); border: 1px solid rgba(220,38,38,0.5); }
+    .cam-count { margin-left: auto; padding-left: 12px; color: rgba(255,255,255,0.4); font-size: 11px; }
+
+    /* Event feed */
+    #event-feed { position: fixed; bottom: 16px; right: 16px; background: rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; z-index: 10; backdrop-filter: blur(10px); width: 280px; max-height: 200px; overflow-y: auto; }
+    .event-item { font-size: 11px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .event-time { color: rgba(255,255,255,0.3); }
+    .event-critical { color: #ef4444; }
+    .event-warning { color: #eab308; }
+    .event-info { color: #3b82f6; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div>
+      <div class="hud-title">Pylox Vision — Spatial</div>
+      <div class="hud-stats" id="hud-stats">Connecting...</div>
+    </div>
+  </div>
+
+  <!-- Status panel -->
+  <div id="status-panel">
+    <div class="status-row">
+      <span class="status-label"><span class="status-dot dot-green" id="ws-dot"></span>Engine</span>
+      <span class="status-value" id="engine-status">—</span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">Persons</span>
+      <span class="status-value" id="person-count">0</span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">Events</span>
+      <span class="status-value" id="event-count">0</span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">FPS</span>
+      <span class="status-value" id="fps-count">—</span>
+    </div>
+  </div>
+
+  <!-- Camera list -->
+  <div id="camera-panel">
+    <div style="font-size: 11px; color: rgba(255,255,255,0.4); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Cameras</div>
+  </div>
+
+  <!-- Event feed -->
+  <div id="event-feed">
+    <div style="font-size: 11px; color: rgba(255,255,255,0.4); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Live Events</div>
+  </div>
+
+  <!-- Three.js -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ── Config ──
+    const V2_API = window.location.port === '3450'
+      ? `http://${window.location.hostname}:3450`
+      : `${window.location.origin}`;
+    const V2_WS = `ws://${window.location.hostname}:3450/ws`;
+
+    // Camera positions in 3D space (configurable per site)
+    const CAMERA_POSITIONS = {
+      cam1: { pos: new THREE.Vector3(-4, 3, -4), lookAt: new THREE.Vector3(0, 0, 0) },
+      cam2: { pos: new THREE.Vector3(4, 3, -4), lookAt: new THREE.Vector3(0, 0, 0) },
+      cam3: { pos: new THREE.Vector3(0, 3, 4), lookAt: new THREE.Vector3(0, 0, 0) },
+      cam4: { pos: new THREE.Vector3(-4, 3, 4), lookAt: new THREE.Vector3(0, 0, 0) },
+      cam5: { pos: new THREE.Vector3(4, 3, 4), lookAt: new THREE.Vector3(0, 0, 0) },
+      cam6: { pos: new THREE.Vector3(-4, 4, 0), lookAt: new THREE.Vector3(0, 0, 0) },
+      cam7: { pos: new THREE.Vector3(4, 4, 0), lookAt: new THREE.Vector3(0, 0, 0) },
+      cam8: { pos: new THREE.Vector3(0, 5, 0), lookAt: new THREE.Vector3(0, 0, 0) },
+      cam9: { pos: new THREE.Vector3(0, 3, -5), lookAt: new THREE.Vector3(0, 0, 0) },
+    };
+
+    // ── Scene Setup ──
+    const canvas = document.getElementById('canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.8;
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x000000, 0.02);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+    camera.position.set(8, 6, 8);
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.target.set(0, 0, 0);
+    controls.maxPolarAngle = Math.PI / 2.1;
+
+    // ── Lighting ──
+    const ambientLight = new THREE.AmbientLight(0x404050, 0.4);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    directionalLight.position.set(10, 15, 10);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.set(2048, 2048);
+    scene.add(directionalLight);
+
+    // Subtle red accent light
+    const redLight = new THREE.PointLight(0xdc2626, 0.3, 20);
+    redLight.position.set(0, 4, 0);
+    scene.add(redLight);
+
+    // ── Ground Plane ──
+    const groundGeo = new THREE.PlaneGeometry(30, 30, 30, 30);
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x111111,
+      roughness: 0.9,
+      metalness: 0.1,
+    });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // Grid
+    const grid = new THREE.GridHelper(30, 30, 0x333333, 0x1a1a1a);
+    grid.position.y = 0.01;
+    scene.add(grid);
+
+    // ── Camera Frustums ──
+    const cameraMarkers = {};
+    for (const [camId, camData] of Object.entries(CAMERA_POSITIONS)) {
+      const group = new THREE.Group();
+
+      // Camera body
+      const camGeo = new THREE.BoxGeometry(0.2, 0.15, 0.3);
+      const camMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, emissive: 0x440000, roughness: 0.3 });
+      const camMesh = new THREE.Mesh(camGeo, camMat);
+      group.add(camMesh);
+
+      // Field of view cone
+      const coneGeo = new THREE.ConeGeometry(1.5, 3, 4, 1, true);
+      const coneMat = new THREE.MeshBasicMaterial({ color: 0xdc2626, transparent: true, opacity: 0.06, side: THREE.DoubleSide });
+      const cone = new THREE.Mesh(coneGeo, coneMat);
+      cone.rotation.x = Math.PI / 2;
+      cone.position.z = -1.5;
+      group.add(cone);
+
+      // Label
+      const labelCanvas = document.createElement('canvas');
+      labelCanvas.width = 128;
+      labelCanvas.height = 32;
+      const ctx = labelCanvas.getContext('2d');
+      ctx.fillStyle = 'rgba(0,0,0,0)';
+      ctx.fillRect(0, 0, 128, 32);
+      ctx.fillStyle = '#dc2626';
+      ctx.font = 'bold 18px SF Pro, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(camId.toUpperCase(), 64, 22);
+      const labelTex = new THREE.CanvasTexture(labelCanvas);
+      const labelMat = new THREE.SpriteMaterial({ map: labelTex, transparent: true });
+      const label = new THREE.Sprite(labelMat);
+      label.position.y = 0.4;
+      label.scale.set(1, 0.25, 1);
+      group.add(label);
+
+      group.position.copy(camData.pos);
+      group.lookAt(camData.lookAt);
+      scene.add(group);
+      cameraMarkers[camId] = group;
+    }
+
+    // ── Body Meshes (persons) ──
+    const bodyMeshes = {}; // track_id -> THREE.Group
+
+    function createBodyMesh(meshData) {
+      const group = new THREE.Group();
+      group.userData.trackId = meshData.track_id;
+
+      // Joints (spheres)
+      for (const joint of (meshData.joints || [])) {
+        const geo = new THREE.SphereGeometry(joint.radius, 8, 6);
+        const mat = new THREE.MeshStandardMaterial({ color: joint.color, roughness: 0.6 });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(joint.position.x, joint.position.y, joint.position.z);
+        mesh.castShadow = true;
+        group.add(mesh);
+      }
+
+      // Limbs (cylinders)
+      for (const limb of (meshData.limbs || [])) {
+        const start = new THREE.Vector3(limb.start.x, limb.start.y, limb.start.z);
+        const end = new THREE.Vector3(limb.end.x, limb.end.y, limb.end.z);
+        const length = start.distanceTo(end);
+        if (length < 0.001) continue;
+
+        const geo = new THREE.CylinderGeometry(limb.thickness, limb.thickness, length, 6);
+        const mat = new THREE.MeshStandardMaterial({ color: limb.color, roughness: 0.6 });
+        const mesh = new THREE.Mesh(geo, mat);
+
+        // Position at midpoint
+        const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+        mesh.position.copy(mid);
+
+        // Orient along the limb direction
+        const dir = new THREE.Vector3().subVectors(end, start).normalize();
+        const up = new THREE.Vector3(0, 1, 0);
+        const quat = new THREE.Quaternion().setFromUnitVectors(up, dir);
+        mesh.quaternion.copy(quat);
+
+        mesh.castShadow = true;
+        group.add(mesh);
+      }
+
+      return group;
+    }
+
+    function updateBodyMesh(trackId, meshData) {
+      // Remove old mesh
+      if (bodyMeshes[trackId]) {
+        scene.remove(bodyMeshes[trackId]);
+      }
+
+      const group = createBodyMesh(meshData);
+      scene.add(group);
+      bodyMeshes[trackId] = group;
+    }
+
+    function removeBodyMesh(trackId) {
+      if (bodyMeshes[trackId]) {
+        scene.remove(bodyMeshes[trackId]);
+        delete bodyMeshes[trackId];
+      }
+    }
+
+    // ── Position markers (for tracks without pose data) ──
+    const positionMarkers = {};
+
+    function updatePositionMarker(trackId, camera, position, label) {
+      if (!position) return;
+
+      // Convert pixel position to 3D world coords
+      const worldX = (position.x / 1920) * 20 - 10;
+      const worldZ = (position.y / 1080) * 20 - 10;
+
+      if (!positionMarkers[trackId]) {
+        // Create marker
+        const geo = new THREE.CapsuleGeometry(0.15, 1.2, 4, 8);
+        const mat = new THREE.MeshStandardMaterial({
+          color: label === 'person' ? 0xdc2626 : 0x3b82f6,
+          emissive: label === 'person' ? 0x440000 : 0x001144,
+          roughness: 0.4,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.castShadow = true;
+        positionMarkers[trackId] = mesh;
+        scene.add(mesh);
+      }
+
+      // Smooth interpolation
+      const marker = positionMarkers[trackId];
+      marker.position.lerp(new THREE.Vector3(worldX, 0.75, worldZ), 0.3);
+    }
+
+    // ── Fade-out system (ghost markers for departed persons) ──
+    const fadingMarkers = []; // { mesh, startTime, duration }
+
+    function removePositionMarker(trackId) {
+      if (positionMarkers[trackId]) {
+        const marker = positionMarkers[trackId];
+        // Don't delete — convert to fading ghost
+        marker.material = marker.material.clone();
+        marker.material.transparent = true;
+        marker.material.color.set(0x666666); // grey ghost
+        marker.material.emissive.set(0x111111);
+        fadingMarkers.push({ mesh: marker, startTime: performance.now(), duration: 5000 });
+        delete positionMarkers[trackId];
+      }
+    }
+
+    function updateFadingMarkers() {
+      const now = performance.now();
+      for (let i = fadingMarkers.length - 1; i >= 0; i--) {
+        const fm = fadingMarkers[i];
+        const elapsed = now - fm.startTime;
+        const progress = elapsed / fm.duration;
+        if (progress >= 1) {
+          scene.remove(fm.mesh);
+          fadingMarkers.splice(i, 1);
+        } else {
+          fm.mesh.material.opacity = 1 - progress;
+          // Sink into ground
+          fm.mesh.position.y = 0.75 * (1 - progress * 0.5);
+        }
+      }
+    }
+
+    // ── WebSocket Connection ──
+    let ws = null;
+    let eventCount = 0;
+    const eventFeed = document.getElementById('event-feed');
+
+    function connectWebSocket() {
+      ws = new WebSocket(V2_WS);
+
+      ws.onopen = () => {
+        document.getElementById('ws-dot').className = 'status-dot dot-green';
+        document.getElementById('engine-status').textContent = 'Connected';
+        document.getElementById('hud-stats').textContent = 'Connected to V2 Engine';
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          handleWSMessage(data);
+        } catch (e) {}
+      };
+
+      ws.onclose = () => {
+        document.getElementById('ws-dot').className = 'status-dot dot-red';
+        document.getElementById('engine-status').textContent = 'Disconnected';
+        setTimeout(connectWebSocket, 3000);
+      };
+
+      ws.onerror = () => {
+        document.getElementById('ws-dot').className = 'status-dot dot-red';
+      };
+    }
+
+    function handleWSMessage(data) {
+      const source = data.source;
+
+      if (source === 'position') {
+        // Real-time person position update
+        updatePositionMarker(data.track_id, data.camera, data.position, data.label);
+        updatePersonCount();
+      }
+
+      if (source === 'pose') {
+        // Full body mesh update
+        updateBodyMesh(data.track_id, data.mesh);
+      }
+
+      if (source === 'track_end') {
+        removePositionMarker(data.track_id);
+        removeBodyMesh(data.track_id);
+        updatePersonCount();
+      }
+
+      if (source === 'behavior' || source === 'rules') {
+        const evt = data.event || data;
+        addEventToFeed(evt);
+      }
+    }
+
+    function addEventToFeed(evt) {
+      eventCount++;
+      document.getElementById('event-count').textContent = eventCount;
+
+      const div = document.createElement('div');
+      div.className = 'event-item';
+      const severity = evt.severity || 'info';
+      const time = new Date().toLocaleTimeString();
+      const type = evt.type || evt.event_type || 'event';
+      const cam = evt.camera || '';
+
+      div.innerHTML = `<span class="event-time">${time}</span> <span class="event-${severity}">[${severity.toUpperCase()}]</span> ${type} ${cam ? `on ${cam}` : ''}`;
+
+      const feed = document.getElementById('event-feed');
+      feed.appendChild(div);
+
+      // Keep last 20 events
+      while (feed.children.length > 21) {
+        feed.removeChild(feed.children[1]);
+      }
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    function updatePersonCount() {
+      const count = Object.keys(positionMarkers).length + Object.keys(bodyMeshes).length;
+      document.getElementById('person-count').textContent = count;
+    }
+
+    // ── Camera panel ──
+    const camPanel = document.getElementById('camera-panel');
+    for (const camId of Object.keys(CAMERA_POSITIONS)) {
+      const div = document.createElement('div');
+      div.className = 'cam-item';
+      div.textContent = camId.toUpperCase();
+      div.innerHTML += '<span class="cam-count">0</span>';
+      div.onclick = () => {
+        const camData = CAMERA_POSITIONS[camId];
+        // Fly camera to this viewpoint
+        const targetPos = camData.pos.clone().multiplyScalar(1.5);
+        camera.position.copy(targetPos);
+        controls.target.copy(camData.lookAt);
+      };
+      camPanel.appendChild(div);
+    }
+
+    // ── Periodic status fetch ──
+    async function fetchStatus() {
+      try {
+        const resp = await fetch(`${V2_API}/api/v2/status`);
+        const data = await resp.json();
+        const totalPersons = Object.values(data.behavior?.active_tracks || {}).reduce((a, b) => a + b, 0);
+        document.getElementById('person-count').textContent = totalPersons || Object.keys(positionMarkers).length;
+      } catch (e) {}
+    }
+    setInterval(fetchStatus, 5000);
+
+    // ── Animation Loop ──
+    let frameCount = 0;
+    let lastFpsTime = performance.now();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+
+      // Gentle rotation of red accent light
+      const t = performance.now() * 0.001;
+      redLight.position.x = Math.sin(t * 0.5) * 3;
+      redLight.position.z = Math.cos(t * 0.5) * 3;
+
+      // Fade out departed persons
+      updateFadingMarkers();
+
+      renderer.render(scene, camera);
+
+      // FPS counter
+      frameCount++;
+      const now = performance.now();
+      if (now - lastFpsTime >= 1000) {
+        document.getElementById('fps-count').textContent = frameCount;
+        frameCount = 0;
+        lastFpsTime = now;
+      }
+    }
+
+    // ── Resize ──
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ── Init ──
+    connectWebSocket();
+    fetchStatus();
+    animate();
+  </script>
+</body>
+</html>

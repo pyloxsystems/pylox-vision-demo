@@ -1,0 +1,51 @@
+{
+  "site": {
+    "id": "bobs-auto",
+    "name": "Bob's Auto Dealership",
+    "type": "car dealership",
+    "address": "456 Commercial Blvd, Pompano Beach, FL",
+    "hours": {"open": 7, "close": 20},
+    "timezone": "America/New_York"
+  },
+  "cameras": {
+    "cam1": {
+      "name": "Front Entrance",
+      "rtsp": "rtsp://admin:password@192.168.1.100:554/cam/realmonitor?channel=1&subtype=1",
+      "detect": {"enabled": true, "width": 640, "height": 480, "fps": 3},
+      "track": ["person"],
+      "zones": {
+        "entrance": {
+          "coordinates": "0.3,0.1,0.7,0.2,0.6,1,0,1,0.2,0.4",
+          "loitering_time": 3
+        }
+      }
+    },
+    "cam2": {
+      "name": "Parking Lot",
+      "rtsp": "rtsp://admin:password@192.168.1.100:554/cam/realmonitor?channel=2&subtype=1",
+      "detect": {"enabled": true, "width": 640, "height": 480, "fps": 3},
+      "track": ["person", "car"],
+      "zones": {}
+    },
+    "cam3": {
+      "name": "Service Bay",
+      "rtsp": "rtsp://admin:password@192.168.1.100:554/cam/realmonitor?channel=3&subtype=1",
+      "detect": {"enabled": true, "width": 704, "height": 480, "fps": 2},
+      "track": ["person"],
+      "zones": {}
+    }
+  },
+  "alerts": {
+    "push_tokens": [],
+    "sms_numbers": ["+19545551234"]
+  },
+  "network": {
+    "tailscale_auth_key": "",
+    "zigbee_dongle": "/dev/ttyACM0",
+    "cellular_dongle": "/dev/ttyUSB0"
+  },
+  "sensors": {
+    "front_door": "cam1",
+    "service_door": "cam3"
+  }
+}
