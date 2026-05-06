@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Pylox Systems (https://pyloxforge.com)
+#
+# Triggers on stars and forks; creates a labeled tracking issue.
+# The issue creation triggers GitHub's default email notification to repo owner.
+
+name: Notify on engagement
+
+on:
+  watch:
+    types: [started]   # someone starred the repo
+  fork:                # someone forked the repo
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  log-engagement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const event = context.eventName;
+            const sender = context.payload.sender;
+            const senderName = sender.login;
+            const senderUrl = sender.html_url;
+            const senderType = sender.type;
+            const time = new Date().toISOString();
+
+            let title;
+            let body;
+
+            if (event === 'watch') {
+              title = `[STAR] ${senderName} starred the repo`;
+              body = [
+                `**User:** [@${senderName}](${senderUrl})`,
+                `**Type:** ${senderType}`,
+                `**Time:** ${time}`,
+                `**Event:** Star`,
+                ``,
+                `_Auto-generated engagement signal. Close after review._`,
+              ].join('\n');
+            } else if (event === 'fork') {
+              const forkUrl = context.payload.forkee.html_url;
+              title = `[FORK] ${senderName} forked the repo`;
+              body = [
+                `**User:** [@${senderName}](${senderUrl})`,
+                `**Type:** ${senderType}`,
+                `**Fork URL:** ${forkUrl}`,
+                `**Time:** ${time}`,
+                `**Event:** Fork`,
+                ``,
+                `_Auto-generated engagement signal. Close after review._`,
+              ].join('\n');
+            }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['engagement-signal'],
+            });
