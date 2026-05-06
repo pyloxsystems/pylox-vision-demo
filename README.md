@@ -108,7 +108,7 @@ This is the `engine/` portion of the full system — the Python FastAPI backend 
 
 ## License
 
-MIT. See LICENSE.
+PolyForm-Noncommercial-1.0.0. See LICENSE.
 
 ## Contact
 
